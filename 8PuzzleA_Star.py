@@ -1,194 +1,236 @@
-# Declarar objeto de estado (NODO)
-class Grafo:
-    """Estructura de grafo(mapa de adyacencia) con objetos de vértice, arista y cola para búsquedas"""
-    __slots__ = ("_vertices","_movimientos","_root","_colaQ","_colaP","_final","_result","_path")
-    def __init__(self, RootState = None, FinalSt = ["1", "2", "3","8","_","4","7", "6", "5"]):
-        """Constructor de grafo. Declarará atributos. Iniciará vacio en vértices. """
-        self._movimientos = {
-            # Esquinas <---------------
-            0:{3:"V",1:"-->"},
-            2:{5:"V",1:"<--"},
-            6:{3:"/\\",7:"-->"},
-            8:{5:"/\\",7:"<--"},
-            # Laterales <--------------
-            1:{0:"<--",4:"V",2:"-->"},
-            3:{6:"V",4:"-->",0:"/\\"},
-            5:{2:"/\\",4:"<--",8:"V"},
-            7:{8:"-->",4:"/\\",6:"<--"},
-            # Centro <-----------------
-            4:{1:"/\\",5:"-->",7:"V",3:"<--"}}
-        self._vertices = {}
-        self._colaP = self.PQ()
-        self._colaQ = self.PQ()
-        self._final = FinalSt
-        self._root = self.insertarVertice(RootState)
-        self._result = None
-        self._path = []
-    def insertarVertice(self, dato = [  "1","2","3",
-                                        "8","_","4",
-                                        "7","6","5"],Final = ["1","2","3","8","_","4","7","6","5"]):
-        """Inserta y retorna un vértice nuevo de valor dato"""
-        v = self.Vertice(dato, Final)
-        self._vertices[v] = {}
-        return v
-    def retornarVertices(self):
-        return self._vertices
-    def insertarArista(self, orig, dest, dato = None):
-        """Inserta y una arista nueva"""
-        a = self.Arista(orig, dest, dato)
-        self._vertices[dest][orig] = a
-    def Raiz(self):
-        """Retorna el nodo raíz"""
-        return self._root
-    def S_Mas(self, nodo_u):
-        """Generador de hijos respecto a un padre."""
-        Pos = nodo_u._DatoStr().find("_")
-        for x in self._movimientos[Pos].keys():
-            datoHijo = nodo_u._Dato().copy()
-            datoHijo[Pos], datoHijo[x] = datoHijo[x], datoHijo[Pos]
-            Hijo = self.Vertice(datoHijo, self._final)
-            if not self._colaP._Find(Hijo) and not self._colaQ._Find(Hijo):
-                nuevoHijo = self.insertarVertice(datoHijo)
-                self.insertarArista(nodo_u, nuevoHijo, self._movimientos[Pos].get(nuevoHijo._DatoStr().find("_")))
-                nuevoHijo.ActHeu()
-                self._colaP._Push(nuevoHijo)
-    def A_Star(self):
-        """Best-First Search o A*."""
-        Fin = self.Vertice(self._final)
-        self._colaP._Push(self.Raiz())
-        print("Realizando búsqueda...")
-        while not self._colaP._Find(Fin) and not self._colaP._Empty():
-            u = self._colaP._Pop()
-            u.ActHeu()
-            self._colaQ._Push(u)
-            self.S_Mas(u)
-            print("Cola P:", self._colaP._Len())
-            print("Cola Q:", self._colaQ._Len())
-        if self._colaP._Find(Fin):
-            print("Resultado encontrado, generando camino de A*...")
-            Index = self._colaP._Find(Fin, True)
-            self._result = self._colaP._Queue()[Index]
-            self._path = [self.HojaResult()].copy()
-            step = self.HojaResult()
-            while not step == self.Raiz():
-                direccion = self.retornarVertices()[step]
-                for vertice, arista in direccion.items():
-                    self._path.extend([arista, vertice])
-                    step = vertice
-            self._path.reverse()
-            for move in self._path:
-                if isinstance(move._Dato(), list):
-                    print(move._Heuristic())
-                    for a,b,c in zip(range(0,9,3),range(1,9,3),range(2,9,3)):
-                        print(move._Dato()[a],move._Dato()[b],move._Dato()[c])
-                    print("\n")
+# Datos de entrada
+
+# init = ["1", "_", "2",
+#        "7", "5", "4",
+#        "8", "6", "3"]
+
+# Term = ['1', '6', '2',
+#        '7', '3', '4',
+#        '_', '8', '5']
+
+init = ["8", "7", "6",
+        "1", "_", "5",
+        "2", "3", "4"]
+
+Term = ['1', '2', '3',
+        '8', '_', '4',
+        '7', '6', '5']
+
+# Coeficientes de g, h
+qK = 1
+qH = 1
+
+# Movimietos posibles del Puzzle para posición actual de espacio vacío
+movimientos = {
+    # Esquinas <---------------
+    0: {3: "V", 1: "-->"},
+    2: {5: "V", 1: "<--"},
+    6: {3: "/\\", 7: "-->"},
+    8: {5: "/\\", 7: "<--"},
+    # Laterales <--------------
+    1: {0: "<--", 4: "V", 2: "-->"},
+    3: {6: "V", 4: "-->", 0: "/\\"},
+    5: {2: "/\\", 4: "<--", 8: "V"},
+    7: {8: "-->", 4: "/\\", 6: "<--"},
+    # Centro <-----------------
+    4: {1: "/\\", 5: "-->", 7: "V", 3: "<--"}}
+
+
+# Clase de nodo
+class Nodo:
+    """"Objeto de nodo que contiene estado actual del puzzle así como el valor f(u) = g(u) + h(u)"""
+
+    def __init__(self, dato, dad, mov):
+        # Posición de puzzle
+        self._dato = dato
+        # Determinar el padre
+        self._dad = dad
+        # Movimiento con el que se llegó a dicho estado
+        self._mov = mov
+        # Determinar profundidad del nodo en árbol
+        self._depth = 0 if not dad else dad.Depth() + qK
+        # Determinar valor de criterio y calcular heurística
+        self._heuristic = self.Wrong() + self._depth
+
+    def __le__(self, other):
+        """"Método para compara 2 nodos"""
+        return self.Heu() <= other.Heu()
+
+    def __lt__(self, other):
+        """"Método para compara 2 nodos"""
+        return self.Heu() < other.Heu()
+
+    def __eq__(self, other):
+        """Se evalua respecto al dato dada la comparación nodo_x == nodo_y. Se usa en la clase BestFirst
+        para evitar elementos repetidos o verificarlos"""
+        return self.Dato() == other.Dato()
+
+    def Wrong(self):
+        """"Cálculo de criterio(Posiciones correctas). El error posición del espacio vacío se cuenta solo una vez si se
+            encuentra en distintas pocisiones(Estado final e inicial)."""
+        suma = qH * sum([1 for x in range(9) if self._dato[x] != Term[x]])
+        return suma - qH if "".join(self._dato).find("_") != "".join(Term).find("_") else suma
+
+    def Depth(self):
+        return self._depth
+
+    def Heu(self):
+        """Retornar valor heuristico"""
+        return self._heuristic
+
+    def Dato(self):
+        """Retornar dato asociado o etiqueta de vértice(Estado de 8-Puzzle)"""
+        return self._dato
+
+    def Mov(self):
+        return self._mov
+
+    def Dad(self):
+        return self._dad
+
+
+# Instancia de cola Q
+class ColaQ:
+    """Clase simple de una cola. Cola Q no necesita muchos detalles."""
+
+    def __init__(self):
+        self._queue = []
+
+    def Push(self, nodo):
+        if self.isEmpty():
+            self._queue.append(nodo)
+        elif not self.Find(nodo):
+            self._queue.append(nodo)
+
+    # Búsqueda de duplicados e index
+    def Find(self, nodo):
+        for duplicate in self._queue:
+            if nodo == duplicate:
+                return True
+        return False
+
+    def isEmpty(self):
+        return not self._queue
+
+    def Len(self):
+        return len(self._queue)
+
+
+# Instancia de cola P
+class BestFirst:
+    """"Cola ordenada de acuerdo a un criterio de evaluación. Validá existencia y ordena elementos en cada Push()."""
+
+    def __init__(self):
+        self._queue = []
+
+    # Agregar a cola
+    def Push(self, nodo):
+        """Ingresar elemento a la cola, ordena y evita duplicados"""
+        if self.isEmpty():
+            self._queue.append(nodo)
+        else:
+            self._queue.append(nodo)
+            # Acomodar cola nuevos estados
+            for x in range(len(self._queue) - 1, 0, -1):
+                if self._queue[x] <= self._queue[x - 1]:
+                    self._queue[x], self._queue[x - 1] = self._queue[x - 1], self._queue[x]
                 else:
-                    print(move._Dato(),"\n")
-            print("Profundidad:", self.HojaResult()._Depth())
-        elif self._colaP._Empty():
-            print("Cola P vacía, no hay solución...")
-    def HojaResult(self):
-        return self._result
-    class Vertice:
-        """Estructura de vértice para grafo"""
-        __slots__ = ("_elemento","_profundidad","_heuristic","_final","_elementoStr","_finalStr","_HCoef","_DCoef")
-        def __init__(self,Dato=["1","2","3","8","_","4","7","6","5"],FinalSt=["1","2","3","8","_","4","7","6","5"],HCoef = 1,DCoef=1):
-            """Constructor de vertice. Iniciar grafo con insertarVertice(Dato)"""
-            self._elemento = Dato
-            self._elementoStr = "".join(self._elemento)
-            self._profundidad = 0
-            self._final = FinalSt
-            self._finalStr = "".join(self._final)
-            self._HCoef = HCoef
-            self._DCoef = DCoef
-        def ActHeu(self):
-            suma = self._HCoef*sum([1 for x in range(9) if self._Dato()[x] != self._Final()[x]]) + self._DCoef*self._Depth()
-            self._heuristic = suma-1*self._HCoef if self._DatoStr().find("_") != self._FinalStr().find("_") else suma
-        def __lt__(self, other_state):
-            """Se evalua respecto al valor heurístico dada la comparación nodo_x < nodo_y. Se usa
-            la clase PQ para ordenar"""
-            return self._heuristic < other_state._heuristic
-        def __eq__(self, other_state):
-            """Se evalua respecto al dato dada la comparación nodo_x == nodo_y. Se usa en la clase PQ
-            para evitar elementos repetidos o verificarlos"""
-            return self._elemento == other_state._elemento
-        def __le__(self, other_state):
-            return self._heuristic <= other_state._heuristic
-        def _Final(self):
-            return self._final
-        def _FinalStr(self):
-            return self._finalStr
-        def _Depth(self):
-            """Retornar profundidad de vértice(Estado de Imposible)"""
-            return self._profundidad
-        def _Dato(self):
-            """Retornar dato asociado o etiqueta de vértice(Estado de Imposible)"""
-            return self._elemento
-        def _DatoStr(self):
-            """Retorna dato asociado como lista"""
-            return self._elementoStr
-        def _Heuristic(self):
-            """Retornar valor heuristico"""
-            return self._heuristic
-        def __hash__(self):
-            """Retornarse a si mismo para usarse como key/set/map, a través de la inherencia."""
-            return hash(id(self))
-    class Arista:
-        """Estructura de arista para grafo"""
-        __slots__ = ("_origen","_destino","_elemento")
-        def __init__(self, V_Origen, V_Destino, Dato = None):
-            """Constructor de arista. Iniciar grafo con insertarArista(Dato)"""
-            self._origen, self._destino, self._elemento = V_Origen, V_Destino, Dato
-            V_Destino._profundidad = V_Origen._profundidad + 1
-        def _Dato(self):
-            """Retornar valor o etiqueta de arista(función de transformación)"""
-            return self._elemento
-        def __hash__(self):
-            """ Retornarse a si mismo como tupla de incidencia para usarse como llave/valor,
-                en diccionario"""
-            return hash((self._origen, self._destino))
-    class PQ:
-        """Clase de cola de prioridad"""
-        __slots__ = ("_queue","_orden","_duplis")
-        def __init__(self, Ord = True, Dup = False):
-            self._queue = []
-            self._orden = Ord
-            self._duplis = Dup
-        def _Push(self, newState):
-            """Ingresar elemento a la cola, y ordernalo. Dados los parametros Ord(Ordenada) y
-            Dup(Duplicados), ordena y evita duplicados"""
-            if self._duplis or self._Empty():
-                self._queue.append(newState)
-            elif not self._Find(newState):
-                self._queue.append(newState)
-            if self._orden:
-                for x in range(len(self._queue)-1,0,-1):
-                    if self._queue[x] < self._queue[x-1]:
-                        self._queue[x], self._queue[x-1] = self._queue[x-1], self._queue[x]
-                    else:
-                        break
-        def _Empty(self):
-            """Determinar sí cola esta vacía"""
-            return self._queue == []
-        def _Pop(self):
-            """Retirar elemento de la cola"""
-            if not self._Empty():
-                return self._queue.pop(0)
+                    break
+
+    def Pop(self):
+        """Retirar elemento de la cola"""
+        return self._queue.pop(0)
+
+    # Búsqueda de duplicados y obtención de index
+    def Find(self, nodo):
+        """Buscar elemento en la cola"""
+        if not self.isEmpty():
+            for index, duplicate in enumerate(self._queue):
+                if nodo == duplicate:
+                    return True, index
+        return False
+
+    # Determinar si está cola vacía
+    def isEmpty(self):
+        """Determinar sí cola esta vacía"""
+        return not self._queue
+
+    # Llamar nodo de cola dado index
+    def getNode(self, index):
+        return self._queue[index]
+
+    # Longitud de cola
+    def Len(self):
+        return len(self._queue)
+
+
+# Función principal
+def A_Star(Raiz):
+    """"Función principal de búsqueda de solución(A*)."""
+    global colaQ
+    global colaP
+    # Primer elemento en cola
+    colaP.Push(Raiz)
+    # Iterar hasta que P contenga el estado terminal o quede vacía
+    while not colaP.Find(Terminal) and not colaP.isEmpty():
+        # Remover elemento de cola P y mover a Q
+        u = colaP.Pop()
+        colaQ.Push(u)
+        # Generar hijos de nodo actual
+        Expander(u)
+        print("Cola P:", colaP.Len())
+        print("Cola Q:", colaQ.Len())
+    if colaP.isEmpty():
+        print("\nNo hay solución, cola P vacía...")
+    else:
+        # Determinar camino hacía raíz
+        Done = colaP.getNode(colaP.Find(Terminal)[1])
+        nodePath = Done
+        path = []
+        while nodePath.Dad() is not None:
+            path.append(nodePath.Dato())
+            path.append(("Profundidad = " + str(nodePath.Depth()), "Heurística = " + str(nodePath.Heu())))
+            path.append("\n" + nodePath.Mov())
+            nodePath = nodePath.Dad()
+        path.reverse()
+        print("\n")
+        Imprimir(init)
+        for elem in path:
+            if isinstance(elem, list):
+                Imprimir(elem)
             else:
-                print("Cola vacía")
-        def _Find(self, state, Index = False):
-            """Buscar elemento en la cola"""
-            if not self._Empty():
-                for i, duplicate in enumerate(self._Queue()):
-                    if state == duplicate:
-                        return i if Index else True
-            return False
-        def _Queue(self):
-            """Retorna la cola"""
-            return self._queue
-        def _Len(self):
-            return len(self._Queue())
-PathFinder = Grafo(["2","1","6",
-                    "4","_","8",
-                    "7","5","3"])
-PathFinder.A_Star()
+                print(elem)
+
+
+def Imprimir(array):
+    print(array[0:3])
+    print(array[3:6])
+    print(array[6:9])
+
+
+def Expander(nodo):
+    """"Función para determinar hijos y agregarlos a P"""
+    global colaP
+    # Determinar posición de espacio vacío
+    pos = "".join(nodo.Dato()).find("_")
+    # Iterar sobre las posibles nuevas posiciones(Diccionario)
+    for x in movimientos[pos].keys():
+        datoHijo = nodo.Dato().copy()
+        # Intercambio de pocisiones
+        datoHijo[pos], datoHijo[x] = datoHijo[x], datoHijo[pos]
+        # Generar nuevo nodo
+        Hijo = Nodo(datoHijo, nodo, movimientos[pos][x])
+        # Determinar si nuevo nodo existe actualemente en P o en Q
+        if not colaP.Find(Hijo) and not colaQ.Find(Hijo):
+            colaP.Push(Hijo)
+
+
+# Instanciar Colas
+colaQ = ColaQ()
+colaP = BestFirst()
+
+# Nodo terminal(útil para determinar existencia)
+Terminal = Nodo(Term, None, None)
+
+root = Nodo(init, None, None)
+A_Star(root)
